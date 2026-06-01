@@ -1,0 +1,5 @@
+/*
+Copyright 2026 Asier Caballero.
+
+Licensed under the MIT License.
+*/
