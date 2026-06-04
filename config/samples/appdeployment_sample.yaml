@@ -1,0 +1,53 @@
+apiVersion: api.asier.dev/v1alpha1
+kind: AppDeployment
+metadata:
+  name: webapp-sample
+  namespace: default
+spec:
+  image: nginx:1.25
+  replicas: 3
+  port: 80
+  strategy: Rolling
+  env:
+    - name: NGINX_HOST
+      value: localhost
+    - name: NGINX_PORT
+      value: "80"
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+  ingress:
+    enabled: true
+    host: webapp.example.com
+    path: /
+---
+apiVersion: api.asier.dev/v1alpha1
+kind: AppDeployment
+metadata:
+  name: canary-demo
+  namespace: default
+spec:
+  image: ghcr.io/example/app:v1.0.0
+  replicas: 5
+  port: 3000
+  strategy: Rolling
+  canary:
+    steps:
+      - weight: 10
+        replicas: 1
+      - weight: 50
+        replicas: 3
+      - weight: 100
+        replicas: 5
+    trafficIngress: true
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 1
+      memory: 512Mi

@@ -1,0 +1,71 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: k8s-operator-go-webhook-service
+  namespace: k8s-operator-system
+  labels:
+    app.kubernetes.io/name: k8s-operator-go
+    app.kubernetes.io/managed-by: kustomize
+spec:
+  ports:
+    - port: 443
+      protocol: TCP
+      targetPort: 9443
+  selector:
+    app.kubernetes.io/name: k8s-operator-go
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: k8s-operator-go-mutating-webhook-configuration
+  annotations:
+    cert-manager.io/inject-ca-from: k8s-operator-system/k8s-operator-go-serving-cert
+webhooks:
+  - admissionReviewVersions:
+      - v1
+    clientConfig:
+      service:
+        name: k8s-operator-go-webhook-service
+        namespace: k8s-operator-system
+        path: /mutate-api-asier-dev-v1alpha1-appdeployment
+    failurePolicy: Fail
+    name: mappdeployment.api.asier.dev
+    rules:
+      - apiGroups:
+          - api.asier.dev
+        apiVersions:
+          - v1alpha1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - appdeployments
+    sideEffects: None
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: k8s-operator-go-validating-webhook-configuration
+  annotations:
+    cert-manager.io/inject-ca-from: k8s-operator-system/k8s-operator-go-serving-cert
+webhooks:
+  - admissionReviewVersions:
+      - v1
+    clientConfig:
+      service:
+        name: k8s-operator-go-webhook-service
+        namespace: k8s-operator-system
+        path: /validate-api-asier-dev-v1alpha1-appdeployment
+    failurePolicy: Fail
+    name: vappdeployment.api.asier.dev
+    rules:
+      - apiGroups:
+          - api.asier.dev
+        apiVersions:
+          - v1alpha1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - appdeployments
+    sideEffects: None
