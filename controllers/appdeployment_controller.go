@@ -3,6 +3,7 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -18,6 +19,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	appv1alpha1 "github.com/AsierCaballero/k8s-operator-go/api/v1alpha1"
+	"github.com/AsierCaballero/k8s-operator-go/internal/metrics"
 )
 
 //+kubebuilder:rbac:groups=api.asier.dev,resources=appdeployments,verbs=get;list;watch;create;update;patch;delete
@@ -39,7 +41,8 @@ const (
 
 type AppDeploymentReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Scheme  *runtime.Scheme
+	Metrics *metrics.OperatorMetrics
 }
 
 func (r *AppDeploymentReconciler) SetupWithManager(mgr ctrl.Manager) error {
@@ -52,41 +55,62 @@ func (r *AppDeploymentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 func (r *AppDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
+	start := time.Now()
 
 	app := &appv1alpha1.AppDeployment{}
 	if err := r.Get(ctx, req.NamespacedName, app); err != nil {
 		if apierrors.IsNotFound(err) {
+			r.Metrics.ResetDeploymentPhases(req.Name, req.Namespace)
 			return ctrl.Result{}, nil
 		}
+		r.Metrics.RecordReconcileError("fetch_error")
 		return ctrl.Result{}, err
 	}
+
+	r.Metrics.AppDeploymentsTotal.Set(float64(len(app.Spec.Env) + 1))
+	r.Metrics.RecordResourceOperation("AppDeployment", "get")
 
 	if app.ObjectMeta.DeletionTimestamp.IsZero() {
 		if !controllerutil.ContainsFinalizer(app, appDeploymentFinalizer) {
 			controllerutil.AddFinalizer(app, appDeploymentFinalizer)
 			if err := r.Update(ctx, app); err != nil {
+				r.Metrics.RecordReconcileError("finalizer_add_error")
 				return ctrl.Result{}, err
 			}
+			r.Metrics.RecordResourceOperation("AppDeployment", "update_finalizer")
 		}
 	} else {
-		return r.handleCleanup(ctx, app)
+		result, err := r.handleCleanup(ctx, app)
+		duration := time.Since(start).Seconds()
+		r.Metrics.ObserveReconcile("deleted", duration)
+		r.Metrics.ResetDeploymentPhases(app.Name, app.Namespace)
+		return result, err
 	}
 
 	if err := r.reconcileDeployment(ctx, app); err != nil {
 		logger.Error(err, "failed to reconcile Deployment")
 		r.setCondition(ctx, app, appv1alpha1.PhaseFailed, "DeploymentReconcileError", err.Error())
+		r.Metrics.RecordReconcileError("deployment_error")
+		r.Metrics.ObserveReconcile("error", time.Since(start).Seconds())
 		return ctrl.Result{}, err
 	}
 
 	if err := r.reconcileService(ctx, app); err != nil {
 		logger.Error(err, "failed to reconcile Service")
 		r.setCondition(ctx, app, appv1alpha1.PhaseFailed, "ServiceReconcileError", err.Error())
+		r.Metrics.RecordReconcileError("service_error")
+		r.Metrics.ObserveReconcile("error", time.Since(start).Seconds())
 		return ctrl.Result{}, err
 	}
 
 	if err := r.updateStatus(ctx, app); err != nil {
+		r.Metrics.RecordReconcileError("status_update_error")
+		r.Metrics.ObserveReconcile("error", time.Since(start).Seconds())
 		return ctrl.Result{}, err
 	}
+
+	r.Metrics.SetDeploymentPhase(app.Name, app.Namespace, string(app.Status.Phase))
+	r.Metrics.ObserveReconcile("success", time.Since(start).Seconds())
 
 	return ctrl.Result{}, nil
 }
