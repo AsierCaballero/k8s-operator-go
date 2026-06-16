@@ -17,6 +17,7 @@ import (
 
 	appv1alpha1 "github.com/AsierCaballero/k8s-operator-go/api/v1alpha1"
 	"github.com/AsierCaballero/k8s-operator-go/controllers"
+	"github.com/AsierCaballero/k8s-operator-go/internal/metrics"
 )
 
 var (
@@ -60,8 +61,9 @@ func main() {
 	}
 
 	if err = (&controllers.AppDeploymentReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:  mgr.GetClient(),
+		Scheme:  mgr.GetScheme(),
+		Metrics: metrics.NewOperatorMetrics(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "AppDeployment")
 		os.Exit(1)
