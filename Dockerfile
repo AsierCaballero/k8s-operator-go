@@ -6,7 +6,7 @@ ARG TARGETARCH=amd64
 WORKDIR /workspace
 RUN apk add --no-cache git ca-certificates
 
-COPY go.mod go.mod
+COPY go.mod go.sum ./
 RUN go mod download
 
 COPY cmd/ cmd/
