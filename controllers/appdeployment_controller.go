@@ -84,9 +84,13 @@ func (r *AppDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		return result, err
 	}
 
+	if app.Spec.Strategy == appv1alpha1.StrategyBlueGreen {
+		logger.Info("BlueGreen strategy is not yet implemented, falling back to Rolling")
+	}
+
 	if err := r.reconcileDeployment(ctx, app); err != nil {
 		logger.Error(err, "failed to reconcile Deployment")
-		r.setCondition(ctx, app, appv1alpha1.PhaseFailed, "DeploymentReconcileError", err.Error())
+		r.setCondition(ctx, app, "Available", metav1.ConditionFalse, "DeploymentReconcileError", err.Error())
 		r.Metrics.RecordReconcileError("deployment_error")
 		r.Metrics.ObserveReconcile("error", time.Since(start).Seconds())
 		return ctrl.Result{}, err
@@ -94,7 +98,7 @@ func (r *AppDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	if err := r.reconcileService(ctx, app); err != nil {
 		logger.Error(err, "failed to reconcile Service")
-		r.setCondition(ctx, app, appv1alpha1.PhaseFailed, "ServiceReconcileError", err.Error())
+		r.setCondition(ctx, app, "Available", metav1.ConditionFalse, "ServiceReconcileError", err.Error())
 		r.Metrics.RecordReconcileError("service_error")
 		r.Metrics.ObserveReconcile("error", time.Since(start).Seconds())
 		return ctrl.Result{}, err
@@ -309,28 +313,38 @@ func (r *AppDeploymentReconciler) updateStatus(ctx context.Context, app *appv1al
 	app.Status.ObservedGeneration = app.Generation
 
 	switch {
+	case deploy.Spec.Replicas == nil:
+		app.Status.Phase = appv1alpha1.PhaseDeploying
+		r.setCondition(ctx, app, "Available", metav1.ConditionFalse, "NoReplicasSpec", "Deployment has no replicas configured")
 	case deploy.Status.ReadyReplicas >= *deploy.Spec.Replicas:
 		app.Status.Phase = appv1alpha1.PhaseReady
-		r.setCondition(ctx, app, appv1alpha1.PhaseReady, "DeploymentReady", "All replicas are ready")
+		r.setCondition(ctx, app, "Available", metav1.ConditionTrue, "DeploymentReady", "All replicas are ready")
 	case deploy.Status.ReadyReplicas > 0:
 		app.Status.Phase = appv1alpha1.PhaseRolling
-		r.setCondition(ctx, app, appv1alpha1.PhaseRolling, "Deploying", "Rolling update in progress")
+		r.setCondition(ctx, app, "Progressing", metav1.ConditionTrue, "RollingUpdate", "Rolling update in progress")
 	default:
 		app.Status.Phase = appv1alpha1.PhaseDeploying
-		r.setCondition(ctx, app, appv1alpha1.PhaseDeploying, "Deploying", "Waiting for replicas to become ready")
+		r.setCondition(ctx, app, "Progressing", metav1.ConditionFalse, "Deploying", "Waiting for replicas to become ready")
 	}
 
 	return r.Status().Update(ctx, app)
 }
 
-func (r *AppDeploymentReconciler) setCondition(ctx context.Context, app *appv1alpha1.AppDeployment, phase appv1alpha1.AppDeploymentPhase, reason, message string) {
+func (r *AppDeploymentReconciler) setCondition(ctx context.Context, app *appv1alpha1.AppDeployment, condType string, status metav1.ConditionStatus, reason, message string) {
+	now := metav1.Now()
+	for i, c := range app.Status.Conditions {
+		if c.Type == condType && c.Reason == reason {
+			now = c.LastTransitionTime
+			break
+		}
+	}
 	condition := metav1.Condition{
-		Type:               string(phase),
-		Status:             metav1.ConditionTrue,
+		Type:               condType,
+		Status:             status,
 		Reason:             reason,
 		Message:            message,
 		ObservedGeneration: app.Generation,
-		LastTransitionTime: metav1.Now(),
+		LastTransitionTime: now,
 	}
 	meta.SetStatusCondition(&app.Status.Conditions, condition)
 }
