@@ -6,7 +6,6 @@ import (
 )
 
 type OperatorMetrics struct {
-	AppDeploymentsTotal     prometheus.Gauge
 	ReconcileDuration       *prometheus.HistogramVec
 	ReconcileErrors         *prometheus.CounterVec
 	ResourceOperationsTotal *prometheus.CounterVec
@@ -17,11 +16,6 @@ var reconcileDurationBuckets = []float64{0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5
 
 func NewOperatorMetrics() *OperatorMetrics {
 	m := &OperatorMetrics{}
-
-	m.AppDeploymentsTotal = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "k8s_operator_appdeployments_total",
-		Help: "Total number of AppDeployment resources managed",
-	})
 
 	m.ReconcileDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    "k8s_operator_reconcile_duration_seconds",
@@ -45,7 +39,6 @@ func NewOperatorMetrics() *OperatorMetrics {
 	}, []string{"name", "namespace", "phase"})
 
 	metrics.Registry.MustRegister(
-		m.AppDeploymentsTotal,
 		m.ReconcileDuration,
 		m.ReconcileErrors,
 		m.ResourceOperationsTotal,
