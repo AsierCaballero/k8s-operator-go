@@ -125,14 +125,21 @@ func TestAppDeploymentDeletion(t *testing.T) {
 	mustCreateAppDeployment(t, app)
 
 	deploy := &appsv1.Deployment{}
+	svc := &corev1.Service{}
 	g.Eventually(func() error {
 		return k8sClient.Get(ctx, types.NamespacedName{Name: app.Name, Namespace: app.Namespace}, deploy)
+	}, 5*time.Second, 100*time.Millisecond).Should(Succeed())
+	g.Eventually(func() error {
+		return k8sClient.Get(ctx, types.NamespacedName{Name: app.Name, Namespace: app.Namespace}, svc)
 	}, 5*time.Second, 100*time.Millisecond).Should(Succeed())
 
 	g.Expect(k8sClient.Delete(ctx, app)).To(Succeed())
 
 	g.Eventually(func() error {
 		return k8sClient.Get(ctx, types.NamespacedName{Name: app.Name, Namespace: app.Namespace}, deploy)
+	}, 5*time.Second, 100*time.Millisecond).ShouldNot(Succeed())
+	g.Eventually(func() error {
+		return k8sClient.Get(ctx, types.NamespacedName{Name: app.Name, Namespace: app.Namespace}, svc)
 	}, 5*time.Second, 100*time.Millisecond).ShouldNot(Succeed())
 }
 
@@ -229,13 +236,10 @@ func TestAppDeploymentResourceLimits(t *testing.T) {
 		return k8sClient.Get(ctx, types.NamespacedName{Name: app.Name, Namespace: app.Namespace}, deploy)
 	}, 5*time.Second, 100*time.Millisecond).Should(Succeed())
 
-	cpu := deploy.Spec.Template.Spec.Containers[0].Resources.Requests.Cpu()
-	mem := deploy.Spec.Template.Spec.Containers[0].Resources.Requests.Memory()
-	g.Expect(cpu.String()).To(Or(Equal("100m"), Equal("100")))
-	g.Expect(mem.String()).To(Or(Equal("128Mi"), Equal("134217728")))
-
-	cpuLim := deploy.Spec.Template.Spec.Containers[0].Resources.Limits.Cpu()
-	memLim := deploy.Spec.Template.Spec.Containers[0].Resources.Limits.Memory()
-	g.Expect(cpuLim.String()).To(Or(Equal("500m"), Equal("500")))
-	g.Expect(memLim.String()).To(Or(Equal("256Mi"), Equal("268435456")))
+	req := deploy.Spec.Template.Spec.Containers[0].Resources.Requests
+	lim := deploy.Spec.Template.Spec.Containers[0].Resources.Limits
+	g.Expect(req.Cpu().Equal(resource.MustParse("100m"))).To(BeTrue())
+	g.Expect(req.Memory().Equal(resource.MustParse("128Mi"))).To(BeTrue())
+	g.Expect(lim.Cpu().Equal(resource.MustParse("500m"))).To(BeTrue())
+	g.Expect(lim.Memory().Equal(resource.MustParse("256Mi"))).To(BeTrue())
 }
