@@ -51,6 +51,27 @@ kubectl delete appdeployment webapp-sample
 
 The controller cleans up the Deployment and Service via finalizers.
 
+## Webhook TLS
+
+Admission webhooks require TLS. The manifests in `config/webhook/` include
+cert-manager annotations for automatic certificate provisioning:
+
+```bash
+# Install cert-manager (if not already installed)
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/latest/download/cert-manager.yaml
+
+# The webhook configuration will automatically request a certificate
+kubectl apply -k config/manager/
+```
+
+For development without cert-manager, set `ENABLE_WEBHOOKS=false`:
+
+```bash
+helm install k8s-operator-go ./deploy/chart --set webhooks.enabled=false
+# or patch the deployment:
+kubectl set env deployment/k8s-operator-go -n k8s-operator-system ENABLE_WEBHOOKS=false
+```
+
 ## Metrics
 
 If Prometheus is running, scrape the operator's metrics endpoint:
